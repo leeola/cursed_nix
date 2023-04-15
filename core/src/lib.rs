@@ -2,6 +2,10 @@ use std::{fmt, io::Write};
 
 pub type Result<T, E = ()> = std::result::Result<T, E>;
 
+pub trait IntoNixFmt {
+    type Foo: NixFormat;
+}
+
 // TODO: write two traits to automatically manage nesting.
 // Ie A -> B -> A -> B, where a user of these traits cannot
 // pass the formatter into a child without converting it, and thereby
@@ -174,4 +178,48 @@ pub mod example_flake {
     #[derive(Debug)]
     pub struct Inputs {}
     pub struct Outputs {}
+}
+
+pub mod foo {
+    use rnix::{
+        ast::{AttrSet, Ident, List},
+        parser::parse,
+        tokenize, Root, SyntaxKind, SyntaxNode,
+    };
+
+    #[test]
+    fn main() {
+        let code = r#"{ hello = "world"; }"#;
+        let tokens = tokenize(code);
+        dbg!(&tokens);
+        let (node, _) = parse(tokens.into_iter());
+        dbg!(&node);
+        // let root = ast.root();
+        // // traverse_ast(root);
+
+        use rowan::ast::AstNode;
+        println!("{}", Root::parse(code).tree().syntax().text());
+        // println!("{}", List.tree().syntax().text());
+        // let i = Ident::from(SyntaxNode::new(Node::Ident("x".into()), 0));
+        let (node, errs) = parse(
+            vec![
+                // foo
+                (List::KIND, "foo"),
+            ]
+            .into_iter(),
+        );
+        dbg!(&node, &errs);
+        println!("{node:#?}");
+
+        let code = r#"{ hello }: hello"#;
+        let tokens = tokenize(code);
+        let (node, _) = parse(tokens.into_iter());
+        dbg!(&node);
+
+        // let code = r#"{ hello  }: hello"#;
+        dbg!(nixpkgs_fmt::explain(code));
+        dbg!(nixpkgs_fmt::reformat_string(code));
+
+        panic!("woo");
+    }
 }
