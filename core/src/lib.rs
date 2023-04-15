@@ -43,27 +43,90 @@ pub trait NixFormat {
         Ok(s)
     }
 }
-pub mod ast {
+pub mod air {
     use crate::{NixFormat, NixFormatter, Result};
     use std::collections::BTreeMap;
 
     pub enum Value {
         String(String),
-        // AttributeSet(AttributeSet)
+        AttributeSet(AttributeSet),
     }
     impl NixFormat for Value {
-        fn nix_format<F: NixFormatter>(&self, f: F) -> Result<()> {
+        fn nix_format<F: NixFormatter>(&self, f: &mut F) -> Result<()> {
             match self {
-                Self::String(s) => f.write_value(s),
+                Self::String(v) => v.nix_format(f),
+                Self::AttributeSet(v) => v.nix_format(f),
             }
         }
     }
+    impl From<&str> for Value {
+        fn from(value: &str) -> Self {
+            Self::from(value.to_string())
+        }
+    }
+    impl From<String> for Value {
+        fn from(value: String) -> Self {
+            Self::String(value)
+        }
+    }
+    impl From<AttributeSet> for Value {
+        fn from(value: AttributeSet) -> Self {
+            Self::AttributeSet(value)
+        }
+    }
     impl NixFormat for String {
-        fn nix_format<F: NixFormatter>(&self, f: F) -> Result<()> {
-            f.write_value(self)
+        fn nix_format<F: NixFormatter>(&self, f: &mut F) -> Result<()> {
+            f.write_value("\"")?;
+            f.write_value(self)?;
+            f.write_value("\"")
         }
     }
     pub struct AttributeSet(pub BTreeMap<String, Value>);
+    impl NixFormat for AttributeSet {
+        fn nix_format<F: NixFormatter>(&self, f: &mut F) -> Result<()> {
+            f.write_line("{")?;
+            for (k, v) in self.0.iter() {
+                f.write_value("  ")?;
+                k.nix_format(f)?;
+                f.write_value(" = ")?;
+                v.nix_format(f)?;
+                f.write_value(";\n")?;
+            }
+            f.write_line("}")?;
+            Ok(())
+        }
+    }
+    #[test]
+    fn attribute_set_format() {
+        panic!("woo");
+
+        let attr_set = AttributeSet({
+            let mut b = BTreeMap::new();
+            b.insert("foo".into(), "bar".into());
+            b
+        });
+        assert_eq!(
+            attr_set.to_string().unwrap(),
+            r#"{
+  "foo" = "bar";
+}
+"#
+        );
+        let attr_set = AttributeSet({
+            let mut b = BTreeMap::<_, Value>::new();
+            b.insert("bing".into(), "bang".into());
+            b.insert("bang".into(), attr_set.into());
+            b
+        });
+        println!("{}", attr_set.to_string().unwrap());
+        assert_eq!(
+            attr_set.to_string().unwrap(),
+            r#"{
+  "foo" = "bar";
+}
+"#
+        );
+    }
 }
 pub trait Value {}
 pub trait AttributeSet {
@@ -97,12 +160,12 @@ pub mod example_types {
     pub struct AttrSet {
         foo: String,
     }
-    impl NixFormat for AttrSet {
-        fn nix_format<W: std::io::Write>(&self, mut w: W, depth: u8) -> Result<(), ()> {
-            write!(w, "foo").unwrap();
-            Ok(())
-        }
-    }
+    // impl NixFormat for AttrSet {
+    //     fn nix_format<W: std::io::Write>(&self, mut w: W, depth: u8) -> Result<(), ()> {
+    //         write!(w, "foo").unwrap();
+    //         Ok(())
+    //     }
+    // }
     #[test]
     fn attr_nix() {}
 }
