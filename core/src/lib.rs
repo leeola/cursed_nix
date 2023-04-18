@@ -2,8 +2,11 @@ use std::{fmt, io::Write};
 
 pub type Result<T, E = ()> = std::result::Result<T, E>;
 
-pub trait IntoNixFmt {
-    type Foo: NixFormat;
+pub trait IntoNixFmt: Into<Self::Format> {
+    type Format: NixFormat;
+    fn into_string(self) -> Result<String> {
+        self.into().to_string()
+    }
 }
 
 // TODO: write two traits to automatically manage nesting.
