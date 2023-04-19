@@ -1,3 +1,4 @@
+use nir::{Nir, NixFormat};
 use std::{fmt, io::Write};
 
 pub type Result<T, E = NoError> = std::result::Result<T, E>;
@@ -10,14 +11,24 @@ impl From<std::fmt::Error> for NoError {
     }
 }
 
-pub trait NixExt: Into<nir::Nir> {
+pub trait NixExt: Into<Nir> {
     fn nix_to_string(self) -> Result<String> {
-        todo!()
+        let nir = self.into();
+        let mut s = String::new();
+        nir.nix_format(&mut s)?;
+        Ok(s)
+    }
+    fn cloned_nix_to_string(&self) -> Result<String>
+    where
+        Self: Clone,
+    {
+        self.clone().nix_to_string()
     }
 }
+impl<T> NixExt for T where T: Into<Nir> {}
 
 pub mod nir {
-    use crate::Result;
+    use crate::{NixExt, Result};
     use std::{collections::BTreeMap, fmt};
 
     /// A centralized trait for internal writing of nix syntax to a std writer.
@@ -27,7 +38,7 @@ pub mod nir {
     /// are easy, but a bit gross to deal with directly.
     ///
     /// See also [`Nir`] for rationale.
-    trait NixFormat {
+    pub trait NixFormat {
         fn nix_format<W: fmt::Write>(&self, f: &mut W) -> Result<()>;
     }
 
@@ -36,6 +47,7 @@ pub mod nir {
     ///
     /// A simplified representation of the rnix AST because i was having trouble finding
     /// ergonomic ways to create the tree.  
+    #[derive(Debug, Clone)]
     pub enum Nir {
         String(String),
         AttributeSet(AttributeSet),
@@ -65,9 +77,10 @@ pub mod nir {
     }
     impl NixFormat for String {
         fn nix_format<W: fmt::Write>(&self, w: &mut W) -> Result<()> {
-            w.write_fmt(format_args!("\"{self}\"")).map_err(|_| ())
+            Ok(w.write_fmt(format_args!("\"{self}\""))?)
         }
     }
+    #[derive(Debug, Clone)]
     pub struct AttributeSet(pub BTreeMap<String, Nir>);
     impl NixFormat for AttributeSet {
         fn nix_format<W: fmt::Write>(&self, w: &mut W) -> Result<()> {
@@ -90,7 +103,7 @@ pub mod nir {
             b
         });
         assert_eq!(
-            attr_set.to_string().unwrap(),
+            attr_set.clone().nix_to_string().unwrap(),
             r#"{
   "foo" = "bar";
 }
@@ -99,12 +112,12 @@ pub mod nir {
         let attr_set = AttributeSet({
             let mut b = BTreeMap::<_, Nir>::new();
             b.insert("bing".into(), "bang".into());
-            b.insert("bang".into(), attr_set.into());
+            b.insert("bang".into(), attr_set.clone().into());
             b
         });
-        println!("{}", attr_set.to_string().unwrap());
+        println!("{}", attr_set.clone().nix_to_string().unwrap());
         assert_eq!(
-            attr_set.to_string().unwrap(),
+            attr_set.nix_to_string().unwrap(),
             r#"{
   "foo" = "bar";
 }
@@ -138,7 +151,6 @@ pub mod flake {
 }
 
 pub mod example_types {
-    use crate::NixFormat;
 
     #[derive(Debug)]
     pub struct AttrSet {
