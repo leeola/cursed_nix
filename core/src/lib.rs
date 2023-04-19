@@ -16,7 +16,8 @@ pub trait NixExt: Into<Nir> {
         let nir = self.into();
         let mut s = String::new();
         nir.nix_format(&mut s)?;
-        Ok(s)
+        // Super hacky, but convenient prototyping.
+        Ok(nixpkgs_fmt::reformat_string(&s))
     }
     fn cloned_nix_to_string(&self) -> Result<String>
     where
@@ -104,9 +105,7 @@ pub mod nir {
         });
         assert_eq!(
             attr_set.clone().nix_to_string().unwrap(),
-            r#"{
-  "foo" = "bar";
-}
+            r#"{ "foo" = "bar"; }
 "#
         );
         let attr_set = AttributeSet({
@@ -118,10 +117,8 @@ pub mod nir {
         println!("{}", attr_set.clone().nix_to_string().unwrap());
         assert_eq!(
             attr_set.nix_to_string().unwrap(),
-            r#"{
-  "foo" = "bar";
-}
-"#
+            r#"{ "foo" = "bar";
+}"#
         );
     }
 }
