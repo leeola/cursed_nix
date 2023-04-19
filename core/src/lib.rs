@@ -1,33 +1,50 @@
 use std::{fmt, io::Write};
 
-pub type Result<T, E = ()> = std::result::Result<T, E>;
+pub type Result<T, E = NoError> = std::result::Result<T, E>;
+
+#[derive(Debug)]
+pub struct NoError(pub ());
+impl From<std::fmt::Error> for NoError {
+    fn from(_: std::fmt::Error) -> Self {
+        Self(())
+    }
+}
 
 pub trait NixExt: Into<nir::Nir> {
-    fn to_string(self) -> Result<String> {
+    fn nix_to_string(self) -> Result<String> {
         todo!()
     }
 }
 
 pub mod nir {
-    use crate::{NixFormat, NixFormatter, Result};
-    use std::{collections::BTreeMap, fmt::Write};
+    use crate::Result;
+    use std::{collections::BTreeMap, fmt};
 
     /// A centralized trait for internal writing of nix syntax to a std writer.
+    ///
+    /// Note that in the future this may change to be some sort of rnix Ast writer,
+    /// but for now i'm just pushing strings because rnix ast creation is awkward. Tokens
+    /// are easy, but a bit gross to deal with directly.
+    ///
+    /// See also [`Nir`] for rationale.
     trait NixFormat {
-        fn nix_format<W: Write>(&self, f: &mut W) -> Result<()>;
+        fn nix_format<W: fmt::Write>(&self, f: &mut W) -> Result<()>;
     }
 
     /// An intermediate representation of a printable nix expression, value, etc. May not be a 1:1
     /// to the actual Nix primitives.
+    ///
+    /// A simplified representation of the rnix AST because i was having trouble finding
+    /// ergonomic ways to create the tree.  
     pub enum Nir {
         String(String),
         AttributeSet(AttributeSet),
     }
     impl NixFormat for Nir {
-        fn nix_format<F: NixFormatter>(&self, f: &mut F) -> Result<()> {
+        fn nix_format<W: fmt::Write>(&self, w: &mut W) -> Result<()> {
             match self {
-                Self::String(v) => v.nix_format(f),
-                Self::AttributeSet(v) => v.nix_format(f),
+                Self::String(v) => v.nix_format(w),
+                Self::AttributeSet(v) => v.nix_format(w),
             }
         }
     }
@@ -47,31 +64,26 @@ pub mod nir {
         }
     }
     impl NixFormat for String {
-        fn nix_format<F: NixFormatter>(&self, f: &mut F) -> Result<()> {
-            f.write_value("\"")?;
-            f.write_value(self)?;
-            f.write_value("\"")
+        fn nix_format<W: fmt::Write>(&self, w: &mut W) -> Result<()> {
+            w.write_fmt(format_args!("\"{self}\"")).map_err(|_| ())
         }
     }
     pub struct AttributeSet(pub BTreeMap<String, Nir>);
     impl NixFormat for AttributeSet {
-        fn nix_format<F: NixFormatter>(&self, f: &mut F) -> Result<()> {
-            f.write_line("{")?;
+        fn nix_format<W: fmt::Write>(&self, w: &mut W) -> Result<()> {
+            w.write_char('{')?;
             for (k, v) in self.0.iter() {
-                f.write_value("  ")?;
-                k.nix_format(f)?;
-                f.write_value(" = ")?;
-                v.nix_format(f)?;
-                f.write_value(";\n")?;
+                k.nix_format(w)?;
+                w.write_char('=')?;
+                v.nix_format(w)?;
+                w.write_char(';')?;
             }
-            f.write_line("}")?;
+            w.write_char('}')?;
             Ok(())
         }
     }
     #[test]
     fn attribute_set_format() {
-        panic!("woo");
-
         let attr_set = AttributeSet({
             let mut b = BTreeMap::new();
             b.insert("foo".into(), "bar".into());
