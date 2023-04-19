@@ -30,7 +30,11 @@ impl<T> NixExt for T where T: Into<Nir> {}
 
 pub mod nir {
     use crate::{NixExt, Result};
-    use std::{collections::BTreeMap, fmt};
+    use std::{
+        collections::BTreeMap,
+        fmt,
+        ops::{Deref, DerefMut},
+    };
 
     /// A centralized trait for internal writing of nix syntax to a std writer.
     ///
@@ -86,14 +90,30 @@ pub mod nir {
     impl NixFormat for AttributeSet {
         fn nix_format<W: fmt::Write>(&self, w: &mut W) -> Result<()> {
             w.write_char('{')?;
+            // NIT: Would be nice to base this on char len, or something.
+            let new_line = self.0.len() >= 2;
             for (k, v) in self.0.iter() {
                 k.nix_format(w)?;
                 w.write_char('=')?;
                 v.nix_format(w)?;
                 w.write_char(';')?;
+                if new_line {
+                    w.write_char('\n')?;
+                }
             }
             w.write_char('}')?;
             Ok(())
+        }
+    }
+    impl Deref for AttributeSet {
+        type Target = BTreeMap<String, Nir>;
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+    impl DerefMut for AttributeSet {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.0
         }
     }
     #[test]
@@ -112,6 +132,17 @@ pub mod nir {
             let mut b = BTreeMap::<_, Nir>::new();
             b.insert("bing".into(), "bang".into());
             b.insert("bang".into(), attr_set.clone().into());
+            let kvs = ('a'..'z')
+                .into_iter()
+                .enumerate()
+                .map(|(i, k)| {
+                    let v = format!("{k} {i}");
+                    (String::from(k), v)
+                })
+                .collect::<Vec<_>>();
+            for (k, v) in kvs {
+                b.insert(k, v.into());
+            }
             b
         });
         println!("{}", attr_set.clone().nix_to_string().unwrap());
