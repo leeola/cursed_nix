@@ -2,63 +2,28 @@ use std::{fmt, io::Write};
 
 pub type Result<T, E = ()> = std::result::Result<T, E>;
 
-pub trait IntoNixFmt: Into<Self::Format> {
-    type Format: NixFormat;
-    fn into_string(self) -> Result<String> {
-        self.into().to_string()
+pub trait NixExt: Into<nir::Nir> {
+    fn to_string(self) -> Result<String> {
+        todo!()
     }
 }
 
-// TODO: write two traits to automatically manage nesting.
-// Ie A -> B -> A -> B, where a user of these traits cannot
-// pass the formatter into a child without converting it, and thereby
-// forcing it to become a nested formatter, which then gets converted
-// back to being usable.
-pub trait NixFormatter {
-    fn write_value(&mut self, s: &str) -> Result<()>;
-    fn write_line(&mut self, s: &str) -> Result<()>;
-}
-pub struct NixWriter<W: Write>(W);
-impl<W: Write> NixWriter<W> {
-    pub fn new(w: W) -> Self {
-        Self(w)
-    }
-    pub fn into_inner(self) -> W {
-        self.0
-    }
-}
-impl<W> NixFormatter for NixWriter<W>
-where
-    W: Write,
-{
-    fn write_value(&mut self, s: &str) -> Result<()> {
-        let Self(w) = self;
-        write!(w, "{}", s).map_err(|_| ())
-    }
-    fn write_line(&mut self, s: &str) -> Result<()> {
-        let Self(w) = self;
-        write!(w, "{}\n", s).map_err(|_| ())
-    }
-}
-pub trait NixFormat {
-    fn nix_format<F: NixFormatter>(&self, f: &mut F) -> Result<()>;
-    fn to_string(&self) -> Result<String> {
-        let mut w = NixWriter::new(Vec::new());
-        self.nix_format(&mut w)?;
-        let buf = w.into_inner();
-        let s = String::from_utf8(buf).unwrap();
-        Ok(s)
-    }
-}
-pub mod air {
+pub mod nir {
     use crate::{NixFormat, NixFormatter, Result};
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, fmt::Write};
 
-    pub enum Value {
+    /// A centralized trait for internal writing of nix syntax to a std writer.
+    trait NixFormat {
+        fn nix_format<W: Write>(&self, f: &mut W) -> Result<()>;
+    }
+
+    /// An intermediate representation of a printable nix expression, value, etc. May not be a 1:1
+    /// to the actual Nix primitives.
+    pub enum Nir {
         String(String),
         AttributeSet(AttributeSet),
     }
-    impl NixFormat for Value {
+    impl NixFormat for Nir {
         fn nix_format<F: NixFormatter>(&self, f: &mut F) -> Result<()> {
             match self {
                 Self::String(v) => v.nix_format(f),
@@ -66,17 +31,17 @@ pub mod air {
             }
         }
     }
-    impl From<&str> for Value {
+    impl From<&str> for Nir {
         fn from(value: &str) -> Self {
             Self::from(value.to_string())
         }
     }
-    impl From<String> for Value {
+    impl From<String> for Nir {
         fn from(value: String) -> Self {
             Self::String(value)
         }
     }
-    impl From<AttributeSet> for Value {
+    impl From<AttributeSet> for Nir {
         fn from(value: AttributeSet) -> Self {
             Self::AttributeSet(value)
         }
@@ -88,7 +53,7 @@ pub mod air {
             f.write_value("\"")
         }
     }
-    pub struct AttributeSet(pub BTreeMap<String, Value>);
+    pub struct AttributeSet(pub BTreeMap<String, Nir>);
     impl NixFormat for AttributeSet {
         fn nix_format<F: NixFormatter>(&self, f: &mut F) -> Result<()> {
             f.write_line("{")?;
@@ -120,7 +85,7 @@ pub mod air {
 "#
         );
         let attr_set = AttributeSet({
-            let mut b = BTreeMap::<_, Value>::new();
+            let mut b = BTreeMap::<_, Nir>::new();
             b.insert("bing".into(), "bang".into());
             b.insert("bang".into(), attr_set.into());
             b
