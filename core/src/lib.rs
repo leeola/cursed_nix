@@ -11,7 +11,7 @@ impl From<std::fmt::Error> for NoError {
     }
 }
 
-pub trait NixExt: Into<Nir> {
+pub trait NixLike: Into<Nir> {
     fn nix_to_string(self) -> Result<String> {
         let nir = self.into();
         let mut s = String::new();
@@ -26,10 +26,10 @@ pub trait NixExt: Into<Nir> {
         self.clone().nix_to_string()
     }
 }
-impl<T> NixExt for T where T: Into<Nir> {}
+impl<T> NixLike for T where T: Into<Nir> {}
 
 pub mod nir {
-    use crate::{NixExt, Result};
+    use crate::{NixLike, Result};
     use std::{
         collections::BTreeMap,
         fmt,
@@ -80,6 +80,11 @@ pub mod nir {
             Self::AttributeSet(value)
         }
     }
+    impl From<BTreeMap<String, Nir>> for Nir {
+        fn from(value: BTreeMap<String, Nir>) -> Self {
+            Self::AttributeSet(value.into())
+        }
+    }
     impl NixFormat for String {
         fn nix_format<W: fmt::Write>(&self, w: &mut W) -> Result<()> {
             Ok(w.write_fmt(format_args!("\"{self}\""))?)
@@ -87,6 +92,11 @@ pub mod nir {
     }
     #[derive(Debug, Clone)]
     pub struct AttributeSet(pub BTreeMap<String, Nir>);
+    impl AttributeSet {
+        pub fn new() -> Self {
+            Self(Default::default())
+        }
+    }
     impl NixFormat for AttributeSet {
         fn nix_format<W: fmt::Write>(&self, w: &mut W) -> Result<()> {
             w.write_char('{')?;
@@ -114,6 +124,11 @@ pub mod nir {
     impl DerefMut for AttributeSet {
         fn deref_mut(&mut self) -> &mut Self::Target {
             &mut self.0
+        }
+    }
+    impl From<BTreeMap<String, Nir>> for AttributeSet {
+        fn from(value: BTreeMap<String, Nir>) -> Self {
+            Self(value)
         }
     }
     #[test]
@@ -153,11 +168,14 @@ pub mod nir {
         );
     }
 }
-pub trait Value {}
-pub trait AttributeSet {
-    type Value: Value;
-    fn keys(&self) -> Vec<&str>;
-    fn iter(&self) -> Box<dyn Iterator<Item = (&str, &Self::Value)>>;
+pub trait AttributeSetLike: NixLike {
+    type ArgSet: ArgSetLike;
+    fn keys() -> &'static [&'static str];
+}
+// NIT: This name is wrong.. i forget what nix calls this.
+pub trait ArgSetLike: NixLike {
+    type AttributeSet: AttributeSetLike;
+    fn keys() -> &'static [&'static str];
 }
 // pub struct Fn<Input, Output> {
 //     pub input: Input,
@@ -170,11 +188,23 @@ pub trait FnLike {
 pub struct Variadic<T>(pub T);
 
 pub mod flake {
-    #[derive(Debug)]
-    pub struct Input {}
+    use crate::nir::{AttributeSet, Nir};
+
+    #[derive(Debug, Clone)]
     pub struct Flake<Inputs> {
         pub inputs: Inputs,
         // pub outputs: Fn<_,_>, NixFn..?,
+    }
+    #[derive(Debug, Clone)]
+    pub struct Input {
+        pub url: String,
+    }
+    impl From<Input> for Nir {
+        fn from(value: Input) -> Self {
+            let mut b = AttributeSet::new();
+            b.insert("url".into(), value.url.into());
+            b.into()
+        }
     }
 }
 
@@ -198,48 +228,4 @@ pub mod example_flake {
     #[derive(Debug)]
     pub struct Inputs {}
     pub struct Outputs {}
-}
-
-pub mod foo {
-    use rnix::{
-        ast::{AttrSet, Ident, List},
-        parser::parse,
-        tokenize, Root, SyntaxKind, SyntaxNode,
-    };
-
-    #[test]
-    fn main() {
-        let code = r#"{ hello = "world"; }"#;
-        let tokens = tokenize(code);
-        dbg!(&tokens);
-        let (node, _) = parse(tokens.into_iter());
-        dbg!(&node);
-        // let root = ast.root();
-        // // traverse_ast(root);
-
-        use rowan::ast::AstNode;
-        println!("{}", Root::parse(code).tree().syntax().text());
-        // println!("{}", List.tree().syntax().text());
-        // let i = Ident::from(SyntaxNode::new(Node::Ident("x".into()), 0));
-        let (node, errs) = parse(
-            vec![
-                // foo
-                (List::KIND, "foo"),
-            ]
-            .into_iter(),
-        );
-        dbg!(&node, &errs);
-        println!("{node:#?}");
-
-        let code = r#"{ hello }: hello"#;
-        let tokens = tokenize(code);
-        let (node, _) = parse(tokens.into_iter());
-        dbg!(&node);
-
-        // let code = r#"{ hello  }: hello"#;
-        dbg!(nixpkgs_fmt::explain(code));
-        dbg!(nixpkgs_fmt::reformat_string(code));
-
-        panic!("woo");
-    }
 }
