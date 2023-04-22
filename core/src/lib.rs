@@ -11,7 +11,10 @@ impl From<std::fmt::Error> for NoError {
     }
 }
 
-pub trait NixLike: Into<Nir> {
+pub trait NixLike<T = Nir>: Into<T>
+where
+    T: NixFormat,
+{
     fn nix_to_string(self) -> Result<String> {
         let nir = self.into();
         let mut s = String::new();
@@ -26,12 +29,17 @@ pub trait NixLike: Into<Nir> {
         self.clone().nix_to_string()
     }
 }
-impl<T> NixLike for T where T: Into<Nir> {}
+// impl<T, U> NixLike<U> for T
+// where
+//     T: Into<U>,
+//     U: NixFormat,
+// {
+// }
 
 pub mod nir {
     use crate::{NixLike, Result};
     use std::{
-        collections::BTreeMap,
+        collections::{BTreeMap, BTreeSet},
         fmt,
         ops::{Deref, DerefMut},
     };
@@ -167,15 +175,29 @@ pub mod nir {
 }"#
         );
     }
+    #[derive(Debug, Clone)]
+    pub struct ArgSet(pub BTreeSet<String>);
+    impl NixFormat for ArgSet {
+        fn nix_format<W: fmt::Write>(&self, w: &mut W) -> Result<()> {
+            todo!()
+        }
+    }
 }
-pub trait AttributeSetLike: NixLike {
-    type ArgSet: ArgSetLike;
-    fn keys() -> &'static [&'static str];
+pub trait AttributeSetLike<T = nir::AttributeSet>: NixLike<T>
+where
+    T: NixFormat,
+{
+}
+pub trait WithArgSet {
+    type ArgSet<T>: ArgSetLike<T>
+    where
+        T: NixFormat;
 }
 // NIT: This name is wrong.. i forget what nix calls this.
-pub trait ArgSetLike: NixLike {
-    type AttributeSet: AttributeSetLike;
-    fn keys() -> &'static [&'static str];
+pub trait ArgSetLike<T = nir::ArgSet>: NixLike<T>
+where
+    T: NixFormat,
+{
 }
 // pub struct Fn<Input, Output> {
 //     pub input: Input,
