@@ -241,10 +241,13 @@ pub trait FnLike {
 pub struct Variadic<T>(pub T);
 
 pub mod flake {
-    use crate::nir::{AttributeSet, Nir};
+    use crate::{
+        nir::{AttributeSet, Nir},
+        AttributeSetLike,
+    };
 
     #[derive(Debug, Clone)]
-    pub struct Flake<Inputs> {
+    pub struct Flake<Inputs: AttributeSetLike> {
         pub inputs: Inputs,
         // pub outputs: Fn<_,_>, NixFn..?,
     }
