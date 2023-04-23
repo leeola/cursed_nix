@@ -176,10 +176,41 @@ pub mod nir {
         );
     }
     #[derive(Debug, Clone)]
-    pub struct ArgSet(pub BTreeSet<String>);
+    pub struct ArgSet {
+        pub set: BTreeSet<String>,
+        pub variadic: bool,
+    }
     impl NixFormat for ArgSet {
         fn nix_format<W: fmt::Write>(&self, w: &mut W) -> Result<()> {
-            todo!()
+            w.write_char('{')?;
+            // NIT: Would be nice to base this on char len, or something.
+            let len = self.set.len();
+            let new_line = len >= 5;
+            let mut iter = self.set.iter().peekable();
+            while let Some(k) = iter.next() {
+                k.nix_format(w)?;
+                let is_more = iter.peek().is_some();
+                if is_more {
+                    w.write_char(',')?;
+                    if new_line {
+                        w.write_char('\n')?;
+                    }
+                }
+            }
+            if self.variadic {
+                if !self.set.is_empty() {
+                    w.write_char(',')?;
+                    if new_line {
+                        w.write_char('\n')?;
+                    }
+                }
+                w.write_str("...")?;
+            }
+            if new_line {
+                w.write_char('\n')?;
+            }
+            w.write_char('}')?;
+            Ok(())
         }
     }
 }
